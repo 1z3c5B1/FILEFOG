@@ -9,16 +9,18 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
-venv/
-env/
+/.venv/
+/venv/
+/env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
 # --- данные пользователей: только на диске, не в git ---
-data/
-storage/
+# ведущий слэш обязателен: без него git игнорирует ЛЮБОЙ вложенный
+# каталог storage/ или data/, включая пакет app/storage/
+/data/
+/storage/
 *.db
 *.db-journal
 *.db-wal
