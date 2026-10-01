@@ -289,14 +289,18 @@ function tgChrome() {
   tg.onEvent?.('themeChanged', apply);
   tg.onEvent?.('fullscreenChanged', apply);
 
-  const btn = document.getElementById('tgBack');
-  const back = document.createElement('button');
-  back.id = 'tgBack';
-  back.className = 'tg-back';
-  back.type = 'button';
-  back.innerHTML = '<span>&#8592;</span>';
-  back.addEventListener('click', () => tg.BackButton && tg.BackButton.click());
-  document.body.appendChild(back);
+  // элемент с таким id уже может быть в разметке страницы,
+  // второй раз создавать нельзя - иначе кнопки накапливаются
+  let back = document.getElementById('tgBack');
+  if (!back) {
+    back = document.createElement('button');
+    back.id = 'tgBack';
+    back.className = 'tg-back';
+    back.type = 'button';
+    back.innerHTML = '<span>&#8592;</span>';
+    back.addEventListener('click', () => tg.BackButton && tg.BackButton.click());
+    document.body.appendChild(back);
+  }
 
   tg.BackButton?.show();
   tg.onEvent?.('backButtonClicked', () => {
@@ -321,11 +325,21 @@ async function tgAuth() {
     });
     if (!r.ok) return false;
     const d = await r.json();
-    if (d.ok) location.replace(d.redirect || '/');
+    if (d.ok) {
+      const to = d.redirect || '/';
+      // перезагружать страницу, если мы уже на ней, нельзя:
+      // иначе location.replace('/') на '/' зациклит страницу
+      if (location.pathname + location.search !== to) location.replace(to);
+      else document.body.dataset.authed = '1';
+    }
     return !!d.ok;
   } catch (_) {
     return false;
   }
+}
+
+function alreadyAuthed() {
+  return document.body.dataset.authed === '1';
 }
 
 function initTelegramApp() {
@@ -337,7 +351,14 @@ function initTelegramApp() {
   tg.expand();
   tgTheme();
   tgChrome();
-  if (tg.isAvailable && !tg.isAvailable()) {   // внутри клиента, но initData нет
+  // внутри клиента, но initData нет
+  if (tg.isAvailable && !tg.isAvailable()) {
+    tgReady();
+    return;
+  }
+  // сессия уже есть (кука пришла от сервера) — повторный вход вызвал бы
+  // бесконечную перезагрузку, поэтому просто снимаем лоадер
+  if (alreadyAuthed()) {
     tgReady();
     return;
   }

@@ -161,6 +161,19 @@ async def main():
     check("есть класс in-telegram", "in-telegram" in html or "in-telegram" in Path(
         Path(__file__).resolve().parent / "app/web/static/style.css").read_text(encoding="utf-8"))
 
+    print("\n=== 8. Нет зацикливания перезагрузки (data-authed) ===")
+    # tgAuth() вызывается на каждой странице. Если он безусловно делает
+    # location.replace('/'), то на главной страница заменяет саму себя
+    # бесконечно: лоадер мигает, кнопка назад моргает.
+    js = (Path(__file__).resolve().parent / "app/web/static/app.js").read_text(encoding="utf-8")
+    check("base.html передаёт data-authed", 'data-authed=' in html)
+    check("JS читает data-authed", "dataset.authed" in js)
+    check("JS проверяет alreadyAuthed перед входом", "alreadyAuthed()" in js)
+    check("редирект не выполняется на месте", "location.pathname + location.search !== to" in js)
+    body = html.split("<body", 1)[1].split(">", 1)[0]
+    check("data-authed внутри body", "data-authed" in body, body[:120])
+    check("кнопка назад не дублируется", js.count("back.id = 'tgBack'") == 1, js.count("back.id = 'tgBack'"))
+
     print(f"\n{'=' * 46}\nИТОГО: {ok} успешно, {fail} провалено\n{'=' * 46}")
     return 1 if fail else 0
 
