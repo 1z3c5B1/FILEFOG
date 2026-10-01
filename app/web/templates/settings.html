@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Настройки — {{ app_name }}{% endblock %}
+{% block content %}
+<h1 style="font-size:26px;margin:0 0 4px">&#9881; Настройки</h1>
+<p class="muted" style="margin:0 0 20px">Изменения сохраняются автоматически и применяются в боте и в панели.</p>
+
+<div id="settingsWrap">
+  <div class="section-tabs">
+    {% for key, title in sections %}
+    <button data-target="{{ key }}">{{ title['ru'] if locale == 'ru' else title['en'] }}</button>
+    {% endfor %}
+  </div>
+
+  {% for key, title in sections %}
+  <div class="card" data-section="{{ key }}" hidden>
+    <h2 style="margin:0 0 6px;font-size:18px">{{ title['ru'] if locale == 'ru' else title['en'] }}</h2>
+    {% for s in by_section[key] %}
+    <div class="setting">
+      <div class="info">
+        <div class="name">{{ s.title['ru'] if locale == 'ru' else s.title['en'] }}</div>
+        <div class="desc">{{ s.hint['ru'] if locale == 'ru' else s.hint['en'] }}</div>
+        <div class="desc mono" style="opacity:.6">{{ s.key }}</div>
+      </div>
+      <div class="control">
+        {% if s.type == 'bool' %}
+          <label class="switch">
+            <input type="checkbox" data-key="{{ s.key }}" {{ 'checked' if prefs[s.key] }}>
+            <span class="track"></span>
+          </label>
+        {% elif s.type == 'int' %}
+          <input type="number" data-key="{{ s.key }}" value="{{ prefs[s.key] }}"
+                 {% if s.min is not none %}min="{{ s.min }}"{% endif %}
+                 {% if s.max is not none %}max="{{ s.max }}"{% endif %}>
+        {% elif s.type == 'choice' %}
+          <select data-key="{{ s.key }}">
+            {% for value, ctitle in s.choices %}
+            <option value="{{ value }}" {{ 'selected' if prefs[s.key] == value }}>
+              {{ ctitle['ru'] if locale == 'ru' else ctitle['en'] }}
+            </option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input type="text" data-key="{{ s.key }}" value="{{ prefs[s.key] }}">
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

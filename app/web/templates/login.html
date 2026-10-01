@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Вход — {{ app_name }}{% endblock %}
+{% block chrome %}
+<div class="login-wrap">
+  <div class="card login-card">
+    <h1>&#128640; {{ app_name }}</h1>
+    <p class="sub">Войди через любой аккаунт — он привяжется к тебе в Telegram</p>
+
+    <div class="oauth-grid">
+      {% for p in providers %}
+      <a class="oauth {{ 'linked' if accounts and accounts.get(p) }}" href="/auth/{{ p }}/login">
+        <span class="mark" style="background:{{ provider_colors[p] if provider_colors else 'var(--accent)' }}">{{ provider_icons[p] }}</span>
+        {{ provider_titles[p] }}
+        <span class="st">{{ 'привязан' if accounts and accounts.get(p) else ('не настроен' if not configured[p] else 'войти') }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    {% if bot_username %}
+    <p class="muted" style="margin-top:20px; font-size:13px">
+      Уже есть аккаунт в Telegram? Просто напиши
+      <a href="https://t.me/{{ bot_username }}">@{{ bot_username }}</a> и нажми «Аккаунты».
+    </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

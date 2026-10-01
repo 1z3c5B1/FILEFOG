@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Главная — {{ app_name }}{% endblock %}
+{% block content %}
+{% set used_mb = (usage.used / 1048576) %}
+{% set total_mb = (usage.total / 1048576) %}
+{% set pct = (100 * usage.used / usage.total) if usage.total else 0 %}
+
+<div class="hero">
+  <h1 class="hero-title">Привет, {{ user.display_name if user and user.display_name else 'друг' }}</h1>
+  <p class="hero-sub">Файлы, аккаунты и синхронизация в одном месте — прямо из Telegram</p>
+</div>
+
+<div class="grid grid-4">
+  <div class="card">
+    <div class="stat-label">Занято</div>
+    <div class="stat-value"><span data-count="{{ '%.2f'|format(used_mb) }}">0</span> MB</div>
+    <div class="bar"><i style="width: {{ [pct, 100]|min }}%"></i></div>
+    <div class="stat-sub">из {{ '%.0f'|format(total_mb) }} MB</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Файлов</div>
+    <div class="stat-value"><span data-count="{{ local.walk()|length }}">0</span></div>
+    <div class="stat-sub">в локальном хранилище</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Облако</div>
+    <div class="stat-value" style="font-size:22px">
+      {{ prefs['default_provider'] or '—' }}
+    </div>
+    <div class="stat-sub">
+      {% if prefs['auto_sync'] %}<span class="badge ok">автосинхронизация</span>
+      {% else %}<span class="badge">выключена</span>{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Привязано</div>
+    <div class="stat-value"><span data-count="{{ accounts|length }}">0</span> / 4</div>
+    <div class="stat-sub">
+      {% for p in providers %}{% if accounts.get(p) %}{{ provider_titles[p] }} {% endif %}{% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px">
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <h2 style="margin:0;font-size:18px">&#128260; Синхронизация</h2>
+      <div class="spacer" style="flex:1"></div>
+    </div>
+    <p class="muted" style="margin-top:0">
+      Папка <span class="mono">{{ prefs['sync_folder'] or 'Trambot' }}</span> ·
+      направление: {% if prefs['sync_both_ways'] %}двусторонняя{% else %}только в облако{% endif %}
+    </p>
+    <div class="seg" style="margin-bottom:14px">
+      <button class="active">Обе стороны</button>
+      <button onclick="runSync('push')">Только в облако</button>
+      <button onclick="runSync('pull')">Только из облака</button>
+    </div>
+    <button class="btn primary block" id="syncBtn" onclick="runSync('both')">&#128260; Синхронизировать</button>
+  </div>
+
+  <div class="card">
+    <h2 style="margin:0 0 14px;font-size:18px">&#128100; Аккаунты</h2>
+    <div class="grid" style="gap:10px">
+      {% for p in providers %}
+      <a class="oauth {{ 'linked' if accounts.get(p) }}" href="/auth/{{ p }}/login">
+        <span class="mark" style="background:{{ provider_colors[p] }}">{{ provider_icons[p] }}</span>
+        {{ provider_titles[p] }}
+        <span class="st">{{ 'подключён' if accounts.get(p) else 'не подключён' }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2 style="margin:0 0 6px;font-size:18px">&#128196; Последние файлы</h2>
+  {% if files %}
+  <table>
+    <thead><tr><th></th><th>Имя</th><th>Размер</th><th>Изменён</th><th></th></tr></thead>
+    <tbody>
+      {% for f in files[:8] %}
+      <tr>
+        <td>{% if f.mime == 'inode/directory' %}&#128193;{% else %}&#128196;{% endif %}</td>
+        <td><a href="/files?path={{ f.path|urlencode }}">{{ f.path.rsplit('/',1)[-1] }}</a></td>
+        <td class="muted nowrap">{{ f.size }} B</td>
+        <td class="muted nowrap">{{ f.modified[:19].replace('T',' ') }}</td>
+        <td class="nowrap"><a class="btn sm" href="/api/download?path={{ f.path|urlencode }}">&#11015; Скачать</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Пока пусто. Загрузи файлы через бота или на странице «Файлы».</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <h2 style="margin:0 0 6px;font-size:18px">&#128340; История синхронизации</h2>
+  <table>
+    <thead><tr><th>Провайдер</th><th>Статус</th><th>Файлы</th><th>Направление</th><th>Когда</th></tr></thead>
+    <tbody id="logs">
+      <tr><td colspan="5" class="muted">Загрузка…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

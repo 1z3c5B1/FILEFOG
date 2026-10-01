@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Профиль — {{ app_name }}{% endblock %}
+{% block content %}
+{% set pf = profile %}
+
+<div class="profile-hero">
+  <div class="pf-avatar">
+    {% if pf.avatar %}
+      <img src="{{ pf.avatar }}" alt="{{ pf.name }}">
+    {% else %}
+      <span class="pf-initial">{{ pf.initial }}</span>
+    {% endif %}
+    <span class="pf-ring"></span>
+  </div>
+  <div class="pf-id">
+    <h1 class="pf-name">{{ pf.name }}</h1>
+    {% if pf.login %}<div class="pf-login">&#64;{{ pf.login }}</div>{% endif %}
+    {% if pf.email %}
+      <div class="pf-email">
+        <span class="pf-mail-ico">&#9993;</span> {{ pf.email }}
+      </div>
+    {% endif %}
+    <div class="pf-providers">
+      {% for p in providers %}
+        {% if pf.linked.get(p) %}
+          <a class="pf-chip" href="/accounts" style="--c: {{ provider_colors[p] }}">
+            <span class="dot" style="background:{{ provider_colors[p] }}"></span>
+            {{ provider_titles[p] }}
+          </a>
+        {% endif %}
+      {% endfor %}
+      {% if not pf.linked %}
+        <a class="pf-chip ghost" href="/accounts">привязать аккаунт</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-4" style="margin-bottom:18px">
+  <div class="card">
+    <div class="stat-label">Занято</div>
+    <div class="stat-value"><span data-count="{{ '%.2f'|format(usage.used / 1048576) }}">0</span> MB</div>
+    <div class="stat-sub">из {{ usage.total // 1048576 }} MB</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Фото</div>
+    <div class="stat-value"><span data-count="{{ photos|length }}">0</span></div>
+    <div class="stat-sub">в галерее</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Видео</div>
+    <div class="stat-value"><span data-count="{{ videos|length }}">0</span></div>
+    <div class="stat-sub">в галерее</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Аккаунтов</div>
+    <div class="stat-value"><span data-count="{{ pf.linked|length }}">0</span></div>
+    <div class="stat-sub">привязано</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="gal-head">
+    <h2 class="gal-title">&#128248; Медиатека</h2>
+    <div class="seg" id="galFilter">
+      <button class="active" data-kind="all">Всё</button>
+      <button data-kind="photo">&#128247; Фото</button>
+      <button data-kind="video">&#127916; Видео</button>
+    </div>
+  </div>
+  <div class="gallery" id="gallery">
+    <div class="muted" style="padding:26px 0">Загрузка…</div>
+  </div>
+</div>
+{% endblock %}

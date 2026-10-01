@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <div class="card login-card" style="text-align:center">
+    <div style="font-size:44px">&#9880;&#65039;</div>
+    <h1 style="font-size:22px">{{ title }}</h1>
+    <p class="muted mono" style="word-break:break-word">{{ text }}</p>
+    <a class="btn primary" href="/">На главную</a>
+  </div>
+</div>
+{% endblock %}

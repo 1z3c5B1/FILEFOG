@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="{{ locale|default('ru') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128640;</text></svg>">
+</head>
+<body class="tg-unready" data-app-name="{{ app_name }}">
+<div class="bg-neon" aria-hidden="true"></div>
+<div class="tg-loader" id="tgLoader">
+  <div class="tg-ring"></div>
+  <div class="tg-loader-txt">Подключаемся к Telegram…</div>
+</div>
+{% block chrome %}
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="logo"><span class="dot">&#128640;</span> {{ app_name }}</div>
+    <nav class="main">
+      <a href="/" class="{{ 'active' if nav == 'home' }}">&#127968; Главная</a>
+      <a href="/files" class="{{ 'active' if nav == 'files' }}">&#128193; Файлы</a>
+      <a href="/profile" class="{{ 'active' if nav == 'profile' }}">&#128100; Профиль</a>
+      <a href="/accounts" class="{{ 'active' if nav == 'accounts' }}">&#128274; Аккаунты</a>
+      <a href="/settings" class="{{ 'active' if nav == 'settings' }}">&#9881; Настройки</a>
+      {% if bot_username %}<a href="https://t.me/{{ bot_username }}" target="_blank">Telegram</a>{% endif %}
+    </nav>
+    <div class="spacer"></div>
+    {% if user %}
+      <a class="pf-head" href="/profile">
+        {% if profile and profile.avatar %}
+          <img class="avatar" src="{{ profile.avatar }}" alt="{{ profile.name }}">
+        {% else %}
+          <span class="avatar avatar-ph">{{ profile.initial if profile else '?' }}</span>
+        {% endif %}
+        <span class="pf-head-name">{{ profile.name if profile else user.display_name }}</span>
+      </a>
+      <a class="btn sm ghost" href="/auth/logout">Выйти</a>
+    {% else %}
+      <a class="btn sm primary" href="/login">Войти</a>
+    {% endif %}
+  </div>
+</header>
+
+<main class="wrap" style="padding-top:26px">
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="bottom">
+  {{ app_name }} &copy; {{ year }} — хранилище и синхронизация прямо в Telegram
+</footer>
+{% endblock %}
+<script src="/static/app.js"></script>
+</body>
+</html>

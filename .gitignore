@@ -1,0 +1,37 @@
+# --- секреты: никогда не коммитить ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- окружение и кэш ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- данные пользователей: только на диске, не в git ---
+data/
+storage/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# --- логи и временные файлы ---
+*.log
+out.txt
+res.txt
+*.pid
+
+# --- редакторы и ОС ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

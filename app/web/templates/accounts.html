@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Аккаунты — {{ app_name }}{% endblock %}
+{% block content %}
+{% if request.query_params.get('ok') %}
+<div class="card" style="margin-bottom:16px"><span class="badge ok">Аккаунт успешно привязан</span></div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2 style="margin:0 0 6px;font-size:18px">&#128100; Вход через внешние сервисы</h2>
+  <p class="muted" style="margin-top:0">Аккаунт используется и для входа, и для синхронизации с облачным диском.</p>
+
+  <div class="grid grid-2" style="margin-top:16px">
+    {% for p in providers %}
+    {% set acc = all_accounts|selectattr('provider','equalto',p)|list|first %}
+    <div class="auth-card">
+      <span class="mark" style="background:{{ provider_colors[p] }}">{{ provider_icons[p] }}</span>
+      <div style="min-width:0">
+        <div class="who">{{ provider_titles[p] }}</div>
+        <div class="meta">
+          {% if acc %}
+            {{ acc.login or acc.email or 'подключён' }} · с {{ acc.linked_at.strftime('%d.%m.%Y') }}
+          {% elif not configured[p] %}
+            не настроен в .env
+          {% else %}
+            не подключён
+          {% endif %}
+        </div>
+      </div>
+      <div style="flex:1"></div>
+      {% if acc %}
+        {% if p in ('google','yandex') %}
+        <span class="badge ok" title="Можно синхронизировать">&#128260; диск</span>
+        {% endif %}
+        <button class="btn sm danger" onclick="unlink('{{ p }}')">Отвязать</button>
+      {% elif configured[p] %}
+        <a class="btn sm primary" href="/auth/{{ p }}/login">Подключить</a>
+      {% else %}
+        <span class="badge warn">нет ключей</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 6px;font-size:18px">&#9881; Профиль</h2>
+  <table>
+    <tr><td class="muted">Telegram ID</td><td class="mono">{{ user.tg_id or '—' }}</td></tr>
+    <tr><td class="muted">Имя</td><td>{{ user.full_name or '—' }}</td></tr>
+    <tr><td class="muted">Username</td><td class="mono">{{ '@' ~ user.username if user.username else '—' }}</td></tr>
+    <tr><td class="muted">Email</td><td>{{ 'скрыт' if prefs['hide_email'] else (user.email or '—') }}</td></tr>
+    <tr><td class="muted">В системе с</td><td>{{ user.created_at.strftime('%d.%m.%Y') }}</td></tr>
+    <tr><td class="muted">Роль</td><td>{{ 'администратор' if user.is_admin else 'пользователь' }}</td></tr>
+  </table>
+</div>
+{% endblock %}
