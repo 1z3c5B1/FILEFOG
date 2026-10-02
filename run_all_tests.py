@@ -11,6 +11,8 @@ SUITES = [
     "profile_test",
     "miniapp_test",
     "ignore_rules_test",
+    "loop_test",
+    "sigv4_test",
 ]
 OK_WORDS = r"(?:passed|\u0443\u0441\u043f\u0435\u0448\u043d\u043e)"
 BAD_WORDS = r"(?:failed|\u043f\u0440\u043e\u0432\u0430\u043b\u0435\u043d\u043e)"

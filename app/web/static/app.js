@@ -347,18 +347,41 @@ function initTelegramApp() {
     tgReady();
     return;
   }
-  tg.ready();
-  tg.expand();
-  tgTheme();
-  tgChrome();
+  try {
+    tg.ready();
+    if (tg.expand) tg.expand(); else if (tg.requestFullscreen) tg.requestFullscreen();
+  } catch (_) {
+    // старый клиент может не знать часть методов - это не повод
+    // оставлять лоадер на экране
+  }
+  try {
+    tgTheme();
+    tgChrome();
+  } catch (_) {
+    // оформление не критично, авторизация важнее
+  }
   // внутри клиента, но initData нет
   if (tg.isAvailable && !tg.isAvailable()) {
     tgReady();
     return;
   }
-  // сессия уже есть (кука пришла от сервера) — повторный вход вызвал бы
-  // бесконечную перезагрузку, поэтому просто снимаем лоадер
   if (alreadyAuthed()) {
+    tgReady();
+    return;
+  }
+  // Страховка от бесконечной перезагрузки: за одну сессию WebView
+  // пробуем автоматический вход ровно один раз. Если кука почему-то не
+  // сохранилась, пользователь увидит страницу входа, а не бесконечный
+  // цикл "Подключаемся к Telegram...".
+  let alreadyTried = false;
+  try {
+    alreadyTried = sessionStorage.getItem('tg_auth_tried') === '1';
+    if (!alreadyTried) sessionStorage.setItem('tg_auth_tried', '1');
+  } catch (_) {
+    // приватный режим может запрещать sessionStorage - тогда полагаемся
+    // на проверку data-authed выше
+  }
+  if (alreadyTried) {
     tgReady();
     return;
   }
