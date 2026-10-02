@@ -8,7 +8,7 @@
 
     <div class="oauth-grid">
       {% for p in providers %}
-      <a class="oauth {{ 'linked' if accounts and accounts.get(p) }}" href="/auth/{{ p }}/login">
+      <a class="oauth {{ 'linked' if accounts and accounts.get(p) }}" href="/auth/{{ p }}/login" target="_blank" rel="noopener">
         <span class="mark" style="background:{{ provider_colors[p] if provider_colors else 'var(--accent)' }}">{{ provider_icons[p] }}</span>
         {{ provider_titles[p] }}
         <span class="st">{{ 'привязан' if accounts and accounts.get(p) else ('не настроен' if not configured[p] else 'войти') }}</span>

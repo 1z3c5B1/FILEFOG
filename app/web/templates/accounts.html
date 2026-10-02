@@ -33,7 +33,7 @@
         {% endif %}
         <button class="btn sm danger" onclick="unlink('{{ p }}')">Отвязать</button>
       {% elif configured[p] %}
-        <a class="btn sm primary" href="/auth/{{ p }}/login">Подключить</a>
+        <a class="btn sm primary" href="/auth/{{ p }}/login" target="_blank" rel="noopener">Подключить</a>
       {% else %}
         <span class="badge warn">нет ключей</span>
       {% endif %}
