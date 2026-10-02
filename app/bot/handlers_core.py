@@ -88,10 +88,10 @@ async def cmd_menu(message: Message):
 async def cmd_stats(message: Message):
     uid, locale = await _ensure_user(message)
     local = local_storage(uid)
-    files = local.walk()
+    files = await local.walk()
     async with session_scope() as s:
         prefs = await us.load_all(s, uid)
-    size = local.total_size()
+    size = await local.total_size()
     text = (
         "\U0001f4ca <b>Статистика</b>\n\n"
         f"Файлов: {len(files)}\n"

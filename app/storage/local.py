@@ -43,15 +43,25 @@ class LocalStorage:
             raise ValueError("path outside of storage")
         return target
 
-    def walk(self) -> list[str]:
+    async def walk(self) -> list[str]:
         out: list[str] = []
         for p in self.root.rglob("*"):
             if p.is_file():
                 out.append(p.relative_to(self.root).as_posix())
         return sorted(out)
 
-    def total_size(self) -> int:
+    async def total_size(self) -> int:
         return sum(p.stat().st_size for p in self.root.rglob("*") if p.is_file())
+
+    async def snapshot(self) -> dict[str, tuple[int, float, str]]:
+        """rel -> (size, mtime, md5) одним обходом папки."""
+        out: dict[str, tuple[int, float, str]] = {}
+        for p in self.root.rglob("*"):
+            if not p.is_file():
+                continue
+            st = p.stat()
+            out[p.relative_to(self.root).as_posix()] = (st.st_size, st.st_mtime, md5_of_file(p))
+        return out
 
     # --- StorageBackend ---
     async def list(self, folder: str = "") -> list[RemoteFile]:
@@ -121,19 +131,28 @@ class LocalStorage:
         )
 
     # --- пакетные операции ---
-    def read(self, rel: str) -> bytes:
+    # Асинхронные, чтобы сигнатуры совпадали с S3Storage: иначе при
+    # переключении на R2 пришлось бы переписывать всех вызывающих.
+    async def read(self, rel: str) -> bytes:
         return self.abspath(rel).read_bytes()
 
-    def write(self, rel: str, data: bytes) -> None:
+    async def write(self, rel: str, data: bytes) -> None:
         path = self.abspath(rel)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
 
-    def stat(self, rel: str):
-        return self.abspath(rel).stat()
+    async def stat(self, rel: str) -> RemoteFile:
+        info = await self.exists(rel)
+        if info is None:
+            raise FileNotFoundError(rel)
+        return info
 
-    def remove(self, rel: str) -> None:
-        self.abspath(rel).unlink(missing_ok=True)
+    async def remove(self, rel: str) -> None:
+        path = self.abspath(rel)
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
 
 
 def md5_of_file(path: Path) -> str:

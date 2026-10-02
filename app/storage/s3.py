@@ -12,8 +12,9 @@ import datetime as dt
 import hashlib
 import hmac
 import mimetypes
+import xml.etree.ElementTree as ET
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode
 
 import httpx
 
@@ -21,6 +22,7 @@ from app.storage.base import RemoteFile, safe_path
 
 ALGO = "AWS4-HMAC-SHA256"
 DIR_MIME = "inode/directory"
+NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
 
 
 def _sha256(data: bytes) -> str:
@@ -193,11 +195,18 @@ class S3Storage:
     async def _delete(self, path: str, **kw) -> httpx.Response:
         return await self._request("DELETE", path, **kw)
 
+    @staticmethod
+    def _text(node: ET.Element | None) -> str:
+        return (node.text or "").strip() if node is not None else ""
+
     async def _list(self, prefix: str, delimiter: str = "") -> list[dict]:
+        """Постраничный ListObjectsV2. R2/S3 отдают XML, не JSON."""
         out: list[dict] = []
         token = ""
+        seen_tokens: set[str] = set()
         while True:
             q: dict[str, Any] = {
+                "list-type": "2",
                 "prefix": prefix,
                 "max-keys": "1000",
                 "encoding-type": "url",
@@ -206,25 +215,35 @@ class S3Storage:
                 q["delimiter"] = delimiter
             if token:
                 q["continuation-token"] = token
-            import json
-
             r = await self._get("", query=q)
-            data = json.loads(r.text)
-            out.extend(data.get("Contents") or [])
-            for cp in data.get("CommonPrefixes") or []:
-                out.append({"Key": cp.get("Prefix", ""), "Dir": True})
-            if not data.get("IsTruncated"):
+            try:
+                root = ET.fromstring(r.text)
+            except ET.ParseError as e:
+                raise S3Error(r.status_code, f"не удалось разобрать ответ списка: {e}") from e
+
+            for node in root.findall("s3:Contents", NS):
+                out.append(
+                    {
+                        "Key": self._text(node.find("s3:Key", NS)),
+                        "Size": int(self._text(node.find("s3:Size", NS)) or 0),
+                        "LastModified": self._text(node.find("s3:LastModified", NS)),
+                        "ETag": self._text(node.find("s3:ETag", NS)),
+                    }
+                )
+            for node in root.findall("s3:CommonPrefixes", NS):
+                out.append({"Key": self._text(node.find("s3:Prefix", NS)), "Dir": True})
+
+            if self._text(root.find("s3:IsTruncated", NS)).lower() != "true":
                 break
-            token = data.get("NextContinuationToken") or ""
-            if not token:
+            token = self._text(root.find("s3:NextContinuationToken", NS))
+            # защита от зацикливания, если сервер вернёт тот же токен
+            if not token or token in seen_tokens:
                 break
+            seen_tokens.add(token)
         return out
 
     # --- StorageBackend ---
     async def list(self, folder: str = "") -> list[RemoteFile]:
-        import json
-        from urllib.parse import unquote
-
         prefix = self.dir_key_of(folder) if folder else self.prefix + "/"
         rows = await self._list(prefix, delimiter="/")
         items: list[RemoteFile] = []
@@ -247,12 +266,11 @@ class S3Storage:
                     checksum=str(row.get("ETag", "")).strip('"'),
                 )
             )
-        items.sort(key=lambda f: (f.mime == DIR_MIME, f.path.lower()))
+        # папки первыми - так же, как в локальном хранилище
+        items.sort(key=lambda f: (f.mime != DIR_MIME, f.path.lower()))
         return items
 
     async def upload(self, rel: str, data: bytes) -> RemoteFile:
-        import json
-
         rel = safe_path(rel)
         key = self.key_of(rel)
         r = await self._put(f"/{quote(key)}", body=data)
@@ -288,12 +306,13 @@ class S3Storage:
         try:
             r = await self._request("HEAD", f"/{quote(key)}")
         except S3Error as e:
-            if e.status in (404, 403):
+            # 403 - это почти всегда неверные права/ключи. Выдавать это за
+            # "файла нет" нельзя: пользователь потеряет файл, думая, что его
+            # не существует. Прокидываем ошибку наверх.
+            if e.status == 404:
                 return None
             raise
-        if r.status_code == 404:
-            return None
-        size = int(r.headers.get("content-length", 0))
+        size = int(r.headers.get("content-length", 0) or 0)
         return RemoteFile(
             path=safe_path(rel),
             size=size,
@@ -306,9 +325,6 @@ class S3Storage:
     # --- операции, которые ждали локальный бэкенд ---
     async def walk(self) -> list[str]:
         rows = await self._list(self.prefix + "/")
-        import json  # noqa: F401
-        from urllib.parse import unquote
-
         out = []
         for row in rows:
             key = unquote(row.get("Key", ""))
@@ -320,6 +336,34 @@ class S3Storage:
     async def total_size(self) -> int:
         rows = await self._list(self.prefix + "/")
         return sum(int(r.get("Size", 0)) for r in rows if not r.get("Dir"))
+
+    async def snapshot(self) -> dict[str, tuple[int, float, str]]:
+        """rel -> (size, mtime, checksum) одним листингом.
+
+        Обход по сети вместо HEAD на каждый файл: при тысяче файлов это
+        разница между одним запросом и тысячей.
+        """
+        rows = await self._list(self.prefix + "/")
+        out: dict[str, tuple[int, float, str]] = {}
+        for row in rows:
+            if row.get("Dir"):
+                continue
+            key = unquote(row.get("Key", ""))
+            if not key or key.endswith("/"):
+                continue
+            raw = str(row.get("LastModified") or "")
+            mtime = 0.0
+            if raw:
+                try:
+                    mtime = dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
+                except ValueError:
+                    mtime = 0.0
+            out[self.rel_of(key)] = (
+                int(row.get("Size", 0) or 0),
+                mtime,
+                str(row.get("ETag") or "").strip('"'),
+            )
+        return out
 
     async def read(self, rel: str) -> bytes:
         return await self.download(rel)

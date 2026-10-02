@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     max_file_mb: int = 100
     user_quota_mb: int = 2048
 
+    # S3-совместимое хранилище (Cloudflare R2, Backblaze B2, MinIO).
+    # Включается автоматически, как только заданы бакет и ключи.
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_region: str = "auto"
+    s3_prefix: str = ""
+    s3_service: str = "s3"
+    s3_timeout: float = 60.0
+
     # OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
@@ -78,6 +89,22 @@ class Settings(BaseSettings):
             if part.isdigit():
                 out.add(int(part))
         return out
+
+    @property
+    def s3_ready(self) -> bool:
+        """S3 включается только когда заданы и бакет, и обе части ключа."""
+        return bool(self.s3_bucket and self.s3_endpoint and self.s3_access_key and self.s3_secret_key)
+
+    @property
+    def s3_configured_partially(self) -> bool:
+        """Ключи заполнены частично - почти наверняка опечатка."""
+        given = [
+            self.s3_bucket,
+            self.s3_endpoint,
+            self.s3_access_key,
+            self.s3_secret_key,
+        ]
+        return any(given) and not all(given)
 
     def callback_url(self, provider: str) -> str:
         base = self.public_base_url.rstrip("/")

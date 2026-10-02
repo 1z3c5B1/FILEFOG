@@ -112,7 +112,7 @@ async def cb_zip_one(call: CallbackQuery):
     uid, locale = await _uid_locale(call.message)
     rel = safe_path(call.data.split(":", 2)[-1])
     local = local_storage(uid)
-    if not local.abspath(rel).exists():
+    if await local.exists(rel) is None:
         await call.answer("Не найдено ❌", show_alert=True)
         return
     await call.answer("Архивирую…")
@@ -180,7 +180,7 @@ async def on_file(message: Message):
     if len(data) > max_bytes:
         await status.edit_text(tr("file_too_big", locale, limit=prefs["max_file_mb"]))
         return
-    if quota and local.total_size() + len(data) > quota:
+    if quota and await local.total_size() + len(data) > quota:
         await status.edit_text(tr("quota", locale))
         return
 
@@ -201,7 +201,8 @@ async def cmd_get(message: Message, command: CommandObject):
         return
     local = local_storage(uid)
     rel = safe_path(arg)
-    if not local.abspath(rel).is_file():
+    found = await local.exists(rel)
+    if found is None or found.mime == "inode/directory":
         await message.answer("Файл не найден ❌")
         return
     await message.answer("⏳ Отправляю…")
@@ -244,7 +245,7 @@ async def cmd_del(message: Message, command: CommandObject):
         return
     rel = safe_path(arg.lstrip("!").strip())
     local = local_storage(uid)
-    if not local.abspath(rel).exists():
+    if await local.exists(rel) is None:
         await message.answer("Не найдено ❌")
         return
     await local.delete(rel)

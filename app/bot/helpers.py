@@ -42,13 +42,13 @@ async def prefs_of(user_id: str) -> dict:
 
 async def send_local_file(bot: Bot, user_id: str, chat_id: int, rel: str, caption: str = "") -> None:
     local = local_storage(user_id)
-    p = local.abspath(rel)
-    if not p.is_file():
-        raise FileNotFoundError(rel)
+    # Читаем в память, а не отдаём путь: у R2 файла на диске нет вовсе.
+    data = await local.read(rel)
+    name = rel.rsplit("/", 1)[-1]
     await bot.send_document(
         chat_id,
-        FSInputFile(p, filename=p.name),
-        caption=caption or p.name,
+        FSInputFile(io.BytesIO(data), filename=name),
+        caption=caption or name,
     )
 
 
@@ -57,10 +57,10 @@ async def send_zip(bot: Bot, user_id: str, chat_id: int, folder: str = "") -> st
     buf = io.BytesIO()
     count = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for rel in local.walk():
+        for rel in await local.walk():
             if folder and not rel.startswith(folder.rstrip("/") + "/"):
                 continue
-            z.writestr(rel, local.read(rel))
+            z.writestr(rel, await local.read(rel))
             count += 1
     buf.seek(0)
     name = (folder.rsplit("/", 1)[-1] or "storage") + ".zip"
@@ -74,7 +74,7 @@ async def send_zip(bot: Bot, user_id: str, chat_id: int, folder: str = "") -> st
 
 async def usage_line(user_id: str, prefs: dict) -> str:
     local = local_storage(user_id)
-    used = local.total_size()
+    used = await local.total_size()
     quota = int(prefs.get("user_quota_mb") or 0) * 1024 * 1024
     if quota:
         return f"\U0001f4ca {human_size(used)} / {human_size(quota)}"

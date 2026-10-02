@@ -236,7 +236,7 @@ async def main():
     check("первый пуш", "conf.txt" in r.uploaded, r.uploaded)
     cloud.files["Trambot/conf.txt"] = b"cloud-version"
     cloud.mtimes["Trambot/conf.txt"] = datetime.now(timezone.utc).isoformat()
-    local.write("conf.txt", b"local-edited-later")
+    await local.write("conf.txt", b"local-edited-later")
     import os as _os
 
     future = _os.path.getmtime(local.abspath("conf.txt")) + 10

@@ -12,7 +12,7 @@ from app.core import user_settings as us
 from app.db.models import StoredFile, SyncLog
 from app.storage.base import RemoteFile, parent_of
 from app.storage.factory import LocalStorage, StorageUnavailable, create_cloud_storage
-from app.storage.local import guess_mime, md5_of_file
+from app.storage.local import guess_mime, md5_of
 
 log = logging.getLogger("trambot.sync")
 
@@ -74,17 +74,9 @@ async def _sync_row(session: AsyncSession, user_id: str) -> dict[str, StoredFile
     return {r.rel_path: r for r in rows.scalars()}
 
 
-def _local_snapshot(local: LocalStorage) -> dict[str, tuple[int, float, str]]:
-    """rel -> (size, mtime, md5)."""
-    out: dict[str, tuple[int, float, str]] = {}
-    for rel in local.walk():
-        p = local.abspath(rel)
-        try:
-            st = p.stat()
-        except OSError:
-            continue
-        out[rel] = (st.st_size, st.st_mtime, md5_of_file(p))
-    return out
+async def _local_snapshot(local: LocalStorage) -> dict[str, tuple[int, float, str]]:
+    """rel -> (size, mtime, md5). Собирается одним обходом бэкенда."""
+    return await local.snapshot()
 
 
 async def _remember(
@@ -178,7 +170,7 @@ async def sync_user(
         verify = bool(prefs["checksum_verify"])
         policy = prefs["sync_conflicts"]
 
-        local_map = _local_snapshot(local)
+        local_map = await _local_snapshot(local)
         rel_to_local = {rel: meta for rel, meta in local_map.items()}
         try:
             remote_items = await cloud.walk(local_root)
@@ -244,7 +236,7 @@ async def sync_user(
                 if max_bytes and size > max_bytes:
                     result.skipped += 1
                     continue
-                data = local.read(lpath)
+                data = await local.read(lpath)
                 try:
                     if r is not None and r.id:
                         if provider == "google":
@@ -292,9 +284,7 @@ async def sync_user(
 
 
 async def _write_local(local: LocalStorage, rel: str, data: bytes) -> None:
-    p = local.abspath(rel)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(data)
+    await local.write(rel, data)
 
 
 async def _pull_one(
@@ -303,11 +293,14 @@ async def _pull_one(
 ) -> bool:
     try:
         if remote.mime == "inode/directory":
-            local.abspath(rel).mkdir(parents=True, exist_ok=True)
+            await local.mkdir(rel)
             return True
         data = await cloud.download(remote.path)
         await _write_local(local, rel, data)
-        await _remember(session, user_id, rel, provider, remote=remote, checksum=md5_of_file(local.abspath(rel)), size=len(data))
+        await _remember(
+            session, user_id, rel, provider, remote=remote,
+            checksum=md5_of(data), size=len(data),
+        )
         return True
     except Exception as e:  # noqa: BLE001
         result.errors.append(f"{rel}: {type(e).__name__}")
@@ -324,7 +317,7 @@ async def _keep_both(local: LocalStorage, rel: str) -> str:
     parent = parent_of(rel)
     target = f"{parent}/{new}" if parent else new
     n = 1
-    while local.abspath(target).exists():
+    while await local.exists(target) is not None:
         target = f"{parent}/{stem} (cloud {n}){ext}" if parent else f"{stem} ({n}){ext}"
         n += 1
     return target

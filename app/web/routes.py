@@ -120,9 +120,11 @@ async def _base_ctx(request: Request, session: AsyncSession, user: User | None, 
         ctx["t"] = lambda key, **kw: tr(key, prefs["locale"], **kw)
         ctx["local"] = local_storage(user.id)
         ctx["usage"] = {
-            "used": ctx["local"].total_size(),
+            "used": await ctx["local"].total_size(),
             "total": int(prefs["user_quota_mb"]) * 1024 * 1024,
         }
+        # Счётчик файлов считается здесь, а не в шаблоне: walk() ходит в сеть.
+        ctx["files_count"] = len(await ctx["local"].walk())
         ctx["profile"] = _build_profile(user, accounts)
     else:
         ctx["locale"] = "ru"
@@ -331,7 +333,7 @@ async def page_accounts(request: Request, session: AsyncSession = Depends(get_se
 async def page_profile(request: Request, session: AsyncSession = Depends(get_session), user: User = Depends(require_user)):
     ctx = await _base_ctx(request, session, user, "profile")
     photos, videos = 0, 0
-    for rel in ctx["local"].walk():
+    for rel in await ctx["local"].walk():
         ext = Path(rel).suffix.lower()
         if ext in IMAGE_EXT:
             photos += 1
@@ -377,7 +379,7 @@ async def api_upload(
     local = local_storage(user.id)
     max_bytes = int(prefs["max_file_mb"]) * 1024 * 1024
     quota = int(prefs["user_quota_mb"]) * 1024 * 1024
-    used = local.total_size()
+    used = await local.total_size()
     saved: list[str] = []
     for up in files:
         data = await up.read()
@@ -392,26 +394,42 @@ async def api_upload(
     return {"ok": True, "saved": saved}
 
 
+async def _send_stored(local, path: str, *, download: bool) -> Response:
+    """Отдать файл из хранилища.
+
+    Раньше здесь был FileResponse(путь на диске), но при R2 файла на диске
+    нет вовсе, поэтому содержимое читается из бэкенда и уходит из памяти.
+    """
+    found = await local.exists(path)
+    if found is None or found.mime == "inode/directory":
+        raise HTTPException(404, "not found")
+    name = path.rsplit("/", 1)[-1]
+    mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    if not download:
+        if not mime.startswith(("image/", "video/", "audio/")):
+            raise HTTPException(415, "not media")
+        return Response(
+            content=await local.download(path),
+            media_type=mime,
+            headers={"Cache-Control": "private, max-age=300"},
+        )
+    quoted = urllib.parse.quote(name)
+    return Response(
+        content=await local.download(path),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename=\"{quoted}\"; filename*=UTF-8''{quoted}"},
+    )
+
+
 @router.get("/api/download")
 async def api_download(path: str, session: AsyncSession = Depends(get_session), user: User = Depends(require_user)):
-    local = local_storage(user.id)
-    p = local.abspath(path)
-    if not p.is_file():
-        raise HTTPException(404, "not found")
-    return FileResponse(p, filename=p.name)
+    return await _send_stored(local_storage(user.id), path, download=True)
 
 
 @router.get("/api/raw")
 async def api_raw(path: str, session: AsyncSession = Depends(get_session), user: User = Depends(require_user)):
     """Файл без заголовка attachment — для <img>/<video> в галерее."""
-    local = local_storage(user.id)
-    p = local.abspath(path)
-    if not p.is_file():
-        raise HTTPException(404, "not found")
-    mime = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-    if mime.startswith(("image/", "video/", "audio/")):
-        return FileResponse(p, media_type=mime, headers={"Cache-Control": "private, max-age=300"})
-    raise HTTPException(415, "not media")
+    return await _send_stored(local_storage(user.id), path, download=False)
 
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".heic"}
@@ -425,7 +443,7 @@ async def api_media(
     """Список фото и видео пользователя для галереи."""
     local = local_storage(user.id)
     items: list[dict] = []
-    for rel in local.walk():
+    for rel in await local.walk():
         ext = Path(rel).suffix.lower()
         if ext in IMAGE_EXT:
             kind = "photo"
@@ -433,23 +451,18 @@ async def api_media(
             kind = "video"
         else:
             continue
-        p = local.abspath(rel)
-        if not p.is_file():
-            continue
-        try:
-            st = p.stat()
-        except OSError:
+        st = await local.exists(rel)
+        if st is None or st.mime == "inode/directory":
             continue
         items.append(
             {
                 "path": rel,
                 "name": rel.rsplit("/", 1)[-1],
                 "kind": kind,
-                "size": st.st_size,
-                "size_h": human_size(st.st_size),
+                "size": st.size,
+                "size_h": human_size(st.size),
                 "mime": mimetypes.guess_type(rel)[0] or "",
-                "modified": datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(),
-            }
+                "modified": st.modified or "",            }
         )
     items.sort(key=lambda i: i["modified"], reverse=True)
     return {"items": items}
@@ -460,14 +473,13 @@ async def api_download_zip(
     path: str = "", session: AsyncSession = Depends(get_session), user: User = Depends(require_user)
 ):
     local = local_storage(user.id)
-    base = local.abspath(path)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        files = local.walk()
+        files = await local.walk()
         for rel in files:
             if path and not (rel == path or rel.startswith(path.rstrip("/") + "/")):
                 continue
-            z.writestr(rel, local.read(rel))
+            z.writestr(rel, await local.read(rel))
     name = (path.rsplit("/", 1)[-1] or "storage") + ".zip"
     data = buf.getvalue()
     quoted = urllib.parse.quote(name)
@@ -523,7 +535,7 @@ async def api_rename(
     local = local_storage(user.id)
     src = payload.get("from", "")
     dst = payload.get("to", "")
-    if not src or not dst or not local.abspath(src).exists():
+    if not src or not dst or await local.exists(src) is None:
         return JSONResponse({"error": "not found"}, status_code=404)
     data = await local.download(src)
     await local.upload(dst, data)
