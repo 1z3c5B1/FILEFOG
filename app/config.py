@@ -65,6 +65,9 @@ class Settings(BaseSettings):
 
     # Derived
     db_path: str = str(BASE_DIR / "data" / "trambot.db")
+    # Внешняя база. Если задана (Neon, Supabase, Render Postgres), данные
+    # переживают пересоздание контейнера. Пусто = локальный SQLite.
+    database_url: str = ""
 
     @model_validator(mode="after")
     def _apply_platform_env(self) -> "Settings":

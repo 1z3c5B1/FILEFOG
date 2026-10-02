@@ -15,6 +15,8 @@ SUITES = [
     "sigv4_test",
     "s3_test",
     "s3_e2e_test",
+    "db_url_test",
+    "pg_schema_test",
 ]
 OK_WORDS = r"(?:passed|\u0443\u0441\u043f\u0435\u0448\u043d\u043e)"
 BAD_WORDS = r"(?:failed|\u043f\u0440\u043e\u0432\u0430\u043b\u0435\u043d\u043e)"
